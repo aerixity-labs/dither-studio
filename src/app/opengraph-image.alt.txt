@@ -1,0 +1,1 @@
+The Dither Studio interface: a red sphere shown side by side as the original photo and its dithered result, with look presets and pattern controls in the right-hand rail.
