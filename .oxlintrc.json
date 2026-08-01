@@ -1,0 +1,85 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "react", "jsx-a11y", "nextjs", "import", "promise"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error",
+    "pedantic": "warn"
+  },
+  "env": {
+    "builtin": true,
+    "browser": true,
+    "es2024": true
+  },
+  "rules": {
+    "typescript/no-explicit-any": "error",
+    "typescript/consistent-type-definitions": ["error", "type"],
+    "typescript/no-non-null-assertion": "error",
+    "typescript/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+    "no-console": ["warn", { "allow": ["error", "warn"] }],
+    "eqeqeq": ["error", "always"],
+    "no-var": "error",
+    "prefer-const": "error",
+    "unicorn/filename-case": ["error", { "case": "kebabCase" }],
+    "unicorn/no-null": "off",
+    "unicorn/no-array-reduce": "off",
+    "unicorn/number-literal-case": "off",
+    "react/no-array-index-key": "warn",
+    "react/react-in-jsx-scope": "off",
+    "import/no-cycle": "error",
+    "import/no-duplicates": "error",
+    "import/no-named-export": "off",
+    "import/no-default-export": "off",
+    "import/no-unassigned-import": "off",
+    "react/jsx-max-depth": "off",
+    "max-lines-per-function": "off",
+    "new-cap": "off",
+    "sort-keys": "off",
+    "sort-imports": "off",
+    "capitalized-comments": "off",
+    "func-style": ["warn", "declaration", { "allowArrowFunctions": true }],
+    // Composition roots legitimately import a lot.
+    "import/max-dependencies": "off",
+    // Fires on Worker.postMessage, which takes a transfer list and has no
+    // targetOrigin. Following its suggestion would break the dither worker.
+    "unicorn/require-post-message-target-origin": "off",
+    // A <canvas role="img"> cannot be rewritten as an <img> tag.
+    "jsx-a11y/prefer-tag-over-role": "off",
+    // The export loops are deliberately sequential: each GIF frame depends on
+    // encoder state, and each video frame must be recorded in order.
+    "no-await-in-loop": "off"
+  },
+  "overrides": [
+    {
+      "files": ["src/components/ui/**"],
+      "rules": {
+        "no-underscore-dangle": "off",
+        "react/jsx-no-constructed-context-values": "off",
+        "unicorn/explicit-length-check": "off"
+      }
+    },
+    {
+      // The core is the Web Worker entry, so it runs without a DOM. Importing a UI
+      // library there would fail at runtime, not just bloat the bundle, so the
+      // boundary is enforced by the linter rather than a comment someone can miss.
+      "files": ["src/lib/dither/core.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": ["motion", "motion/*", "@hugeicons/*"]
+          }
+        ]
+      }
+    },
+    {
+      // Both files hold one cohesive unit that is worse split up: the tone LUT plus
+      // the two pixel loops in the core, and the in-flight frame scheduler in the
+      // hook, whose refs are meaningless apart from each other.
+      "files": ["src/lib/dither/core.ts", "src/hooks/use-dither-render.ts"],
+      "rules": { "max-lines": "off" }
+    }
+  ],
+  "ignorePatterns": [".next/**", "next-env.d.ts"]
+}
