@@ -1,5 +1,5 @@
 {
-  "name": "dither-shader",
+  "name": "dither-studio",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -40,5 +40,6 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.10"
-  }
+  },
+  "packageManager": "pnpm@11.12.0"
 }
