@@ -2,6 +2,9 @@ import type { MetadataRoute } from 'next'
 
 import { getIsProduction, getSiteUrl } from '@/lib/env'
 
+/** Static export: generated once at build time. */
+export const dynamic = 'force-static'
+
 /**
  * No named AI-crawler groups: in robots.txt a named group *replaces* the `*` group for that
  * agent instead of merging with it, so listing GPTBot and friends would silently opt them out

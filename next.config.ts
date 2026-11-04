@@ -1,21 +1,18 @@
 import type { NextConfig } from 'next'
 
-const SECURITY_HEADERS = [
-  { key: 'X-Content-Type-Options', value: 'nosniff' },
-  { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-]
-
 /**
- * No CSP here: the page is fully static and Next's bootstrap uses inline scripts, so a strict
- * policy would need per-request nonces from middleware and would lose the prerender.
+ * Static export: `next build` writes the whole site to `out/`, served as plain files.
+ *
+ * Security headers (`X-Content-Type-Options`, `Referrer-Policy`) are set by the web server, since
+ * an export has no `headers()`. No CSP: Next's bootstrap uses inline scripts, so a strict policy
+ * would need per-request nonces.
  */
 const nextConfig: NextConfig = {
+  output: 'export',
+  trailingSlash: false,
   poweredByHeader: false,
-  /** The word mark is the only optimised image, and 99 keeps it crisp at 28px. */
-  images: { qualities: [75, 99] },
-  headers() {
-    return Promise.resolve([{ source: '/:path*', headers: SECURITY_HEADERS }])
-  },
+  /** No image optimizer in an export. The only optimised image was the 28px word mark. */
+  images: { unoptimized: true },
 }
 
 export default nextConfig
