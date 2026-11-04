@@ -15,15 +15,18 @@ pnpm dev
 `cp .env.example .env.local` is optional – a fresh clone runs fine on the
 localhost default.
 
-| Variable                        | Required | Notes                                                                                |
-| ------------------------------- | -------- | ------------------------------------------------------------------------------------ |
-| `NEXT_PUBLIC_SITE_URL`          | No       | Origin for `metadataBase`, canonical URLs, `robots.txt`, the sitemap and `llms.txt`. |
-| `VERCEL_ENV`                    | Platform | Gates the `noindex` rules. Never set it by hand.                                     |
-| `VERCEL_PROJECT_PRODUCTION_URL` | Platform | Used when `NEXT_PUBLIC_SITE_URL` is unset.                                           |
+| Variable                        | Required | Notes                                                                                          |
+| ------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_SITE_URL`          | No       | Origin for `metadataBase`, canonical URLs, `robots.txt`, the sitemap and `llms.txt`.           |
+| `VERCEL_ENV`                    | CI       | Gates the `noindex` rules. The production build sets it to `production`. Never set it by hand. |
+| `VERCEL_PROJECT_PRODUCTION_URL` | No       | Legacy fallback when `NEXT_PUBLIC_SITE_URL` is unset.                                          |
 
 Precedence is `NEXT_PUBLIC_SITE_URL` → `VERCEL_PROJECT_PRODUCTION_URL` →
-`http://localhost:3000`. Set it explicitly in Vercel Production so the canonical
-host cannot change when domains are reassigned.
+`http://localhost:3000`. The production build sets `NEXT_PUBLIC_SITE_URL`, so the
+canonical host cannot change when domains are reassigned.
+
+Both are read at build time: the site is a static export (`output: 'export'`),
+and `pnpm build` writes it to `out/`.
 
 ## SEO
 
@@ -55,7 +58,8 @@ named group _replaces_ the `*` group for that agent rather than merging with it.
 | Script              | What it does                            |
 | ------------------- | --------------------------------------- |
 | `pnpm dev`          | Dev server                              |
-| `pnpm build`        | Production build                        |
+| `pnpm build`        | Static export to `out/`                 |
+| `pnpm start`        | Serve `out/` locally (after a build)    |
 | `pnpm lint`         | `oxlint`, warnings are errors           |
 | `pnpm format`       | `oxfmt` in place                        |
 | `pnpm format:check` | `oxfmt --check`                         |

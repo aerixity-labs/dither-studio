@@ -2,8 +2,8 @@ import { createEnv } from '@t3-oss/env-nextjs'
 import { z } from 'zod'
 
 /**
- * `VERCEL_ENV` and `VERCEL_PROJECT_PRODUCTION_URL` are injected by the platform,
- * so the site URL only needs to be set explicitly for local development.
+ * Read at build time (static export). The production build sets `VERCEL_ENV=production` and
+ * `NEXT_PUBLIC_SITE_URL`; the names are kept from the Vercel days.
  */
 export const env = createEnv({
   server: {

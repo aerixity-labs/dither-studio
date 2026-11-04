@@ -2,6 +2,9 @@ import type { MetadataRoute } from 'next'
 
 import { SITE_DESCRIPTION, SITE_NAME, SITE_SHORT_NAME, SITE_THEME_COLOR } from '@/constants/site'
 
+/** Static export: generated once at build time. */
+export const dynamic = 'force-static'
+
 /**
  * Reuses the existing `icon.png` and `apple-icon.png` routes, so it costs no new files.
  * Neither is declared `maskable`: both have alpha and no safe-zone padding, so Android's
