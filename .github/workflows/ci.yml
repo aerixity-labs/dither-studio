@@ -24,6 +24,8 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # LayoutProps and the other route types live in .next/types, which a fresh checkout lacks.
+      - run: pnpm exec next typegen
       # format, lint, typecheck, tests
       - run: pnpm check
       # Public values only, so this also runs for pull requests from forks.
