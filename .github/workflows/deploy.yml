@@ -1,0 +1,99 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Switch back to a build of this commit that is still on the server (rollback). Empty builds and deploys the current commit.
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+env:
+  SITE: dither-studio
+  PUBLIC_URL: https://dither-studio.aerixity.com
+
+jobs:
+  ci:
+    if: inputs.sha == ''
+    uses: ./.github/workflows/ci.yml
+    with:
+      # Unique per run, so a rebuild of the same commit is a new release.
+      release: ${{ github.sha }}-${{ github.run_number }}
+
+  deploy:
+    needs: ci
+    if: always() && (needs.ci.result == 'success' || (inputs.sha != '' && needs.ci.result == 'skipped'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    concurrency:
+      group: deploy-dither-studio
+      cancel-in-progress: false
+    steps:
+      - name: Release to deploy
+        id: rel
+        env:
+          INPUT_SHA: ${{ inputs.sha }}
+        run: |
+          if [[ -n "$INPUT_SHA" ]]; then
+            [[ "$INPUT_SHA" =~ ^[0-9a-f]{40}(-[0-9]+)?$ ]] || { echo "::error::not a SHA or release id: $INPUT_SHA"; exit 1; }
+            echo "mode=rollback" >> "$GITHUB_OUTPUT"; echo "id=$INPUT_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=deploy" >> "$GITHUB_OUTPUT"; echo "id=$GITHUB_SHA-$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/download-artifact@v8
+        if: steps.rel.outputs.mode == 'deploy'
+        with:
+          name: site
+          path: out
+
+      - name: SSH key and pinned host key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf 'Host target\n  HostName %s\n  User %s\n  IdentityFile ~/.ssh/deploy\n  IdentitiesOnly yes\n  BatchMode yes\n  StrictHostKeyChecking yes\n' \
+            "${{ vars.DEPLOY_HOST }}" "${{ vars.DEPLOY_USER }}" > ~/.ssh/config
+
+      # bin/deploy-static unpacks into releases/<id> and swaps the `current` symlink atomically.
+      - name: Deploy ${{ steps.rel.outputs.id }}
+        if: steps.rel.outputs.mode == 'deploy'
+        env:
+          ID: ${{ steps.rel.outputs.id }}
+        # The arguments are expanded here on purpose: they go to the forced command on the server.
+        run: |
+          # shellcheck disable=SC2029
+          tar -czf - -C out . | ssh target deploy-static "$SITE" "$ID"
+
+      - name: Roll back to ${{ steps.rel.outputs.id }}
+        if: steps.rel.outputs.mode == 'rollback'
+        env:
+          ID: ${{ steps.rel.outputs.id }}
+        run: |
+          # shellcheck disable=SC2029
+          ssh target rollback "$SITE" "$ID" </dev/null
+
+      # Until the DNS cutover the hostname still points at Vercel, so SMOKE_VIA_ORIGIN=true sends the
+      # request straight to the server (its certificate is Caddy's internal CA until then).
+      - name: Smoke test
+        env:
+          MODE: ${{ steps.rel.outputs.mode }}
+          ID: ${{ steps.rel.outputs.id }}
+          VIA_ORIGIN: ${{ vars.SMOKE_VIA_ORIGIN }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+        run: |
+          args=(-fsS --max-time 10)
+          if [[ "$VIA_ORIGIN" == "true" ]]; then args+=(-k --resolve "${PUBLIC_URL#https://}:443:$DEPLOY_HOST"); fi
+          live=$(curl "${args[@]}" "$PUBLIC_URL/version.txt?r=$GITHUB_RUN_ID")
+          if [[ "$MODE" == "deploy" && "$live" != "$ID" ]]; then echo "::error::live release is $live, expected $ID"; exit 1; fi
+          if [[ "$MODE" == "rollback" && "$live" != "$ID"* ]]; then echo "::error::live release is $live, expected $ID"; exit 1; fi
+          curl "${args[@]}" -o /dev/null -w "GET / -> %{http_code}\n" "$PUBLIC_URL/"
+          echo "live: $live"
