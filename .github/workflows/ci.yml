@@ -1,3 +1,4 @@
+# Pull requests: the same checks and production build as the deploy. Deploys nothing.
 name: ci
 
 on: pull_request
@@ -11,22 +12,38 @@ concurrency:
 
 jobs:
   ci:
-    permissions:
-      contents: read
-    uses: dm3yb/workflows/.github/workflows/ci-next.yml@v2
-    with:
-      package-manager: pnpm
-      node-version-file: .nvmrc
-      # The same checks as `pnpm check`, split into parallel jobs.
-      lint: pnpm format:check && pnpm lint
-      # LayoutProps and the other route types live in .next/types, which a fresh checkout lacks.
-      typecheck: pnpm exec next typegen && pnpm typecheck
-      test: pnpm test
-      build: pnpm build
-      # Public values only, so this also runs for pull requests from forks.
-      build-env: |
-        {
-          "VERCEL_ENV": "production",
-          "NEXT_PUBLIC_SITE_URL": "${{ vars.NEXT_PUBLIC_SITE_URL || 'https://dither-studio.aerixity.com' }}"
-        }
-      export-dir: out
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      # The pull request's merge commit.
+      - uses: actions/checkout@v7
+
+      # pnpm from package.json, Node from .nvmrc with the pnpm cache, then a frozen install.
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Format and lint.
+      - name: Lint
+        run: pnpm format:check && pnpm lint
+
+      # Types. LayoutProps and the other route types live in .next/types, which a fresh checkout lacks.
+      - name: Typecheck
+        run: pnpm exec next typegen && pnpm typecheck
+
+      # Unit tests.
+      - name: Test
+        run: pnpm test
+
+      # The static export in out/. Public values only, so this also runs for pull requests from forks.
+      - name: Build
+        env:
+          VERCEL_ENV: production
+          NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL || 'https://dither-studio.aerixity.com' }}
+        run: |
+          pnpm build
+          test -f out/index.html && test -f out/404.html
