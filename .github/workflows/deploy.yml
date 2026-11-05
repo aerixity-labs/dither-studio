@@ -17,7 +17,7 @@ jobs:
   deploy:
     permissions:
       contents: read
-    uses: dm3yb/workflows/.github/workflows/deploy-static.yml@v1
+    uses: dm3yb/workflows/.github/workflows/deploy-static.yml@v2
     # `secrets: inherit` does not cross organizations (this repo is in aerixity-labs).
     secrets:
       DEPLOY_SSH_KEY_V2: ${{ secrets.DEPLOY_SSH_KEY_V2 }}

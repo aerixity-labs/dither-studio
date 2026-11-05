@@ -13,7 +13,7 @@ jobs:
   ci:
     permissions:
       contents: read
-    uses: dm3yb/workflows/.github/workflows/ci-next.yml@v1
+    uses: dm3yb/workflows/.github/workflows/ci-next.yml@v2
     with:
       package-manager: pnpm
       node-version-file: .nvmrc
