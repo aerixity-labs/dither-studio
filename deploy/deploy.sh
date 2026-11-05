@@ -32,6 +32,7 @@ Host target
   IdentityFile ~/.ssh/deploy
   IdentitiesOnly yes
   BatchMode yes
+  StrictHostKeyChecking yes
 EOF
 
 # 3. Upload into /srv/incoming/dither-studio. --checksum leaves unchanged files alone, so
