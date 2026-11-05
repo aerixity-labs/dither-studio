@@ -45,7 +45,7 @@ jobs:
           pnpm build
           test -f out/index.html && test -f out/404.html
       - name: Deploy
-        if: github.event_name != 'pull_request'
+        if: github.ref == 'refs/heads/main' # main only: pushes and runs by hand
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY_V2 }}
           DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
