@@ -1,50 +1,32 @@
 name: ci
 
-on:
-  pull_request:
-  workflow_call:
-    inputs:
-      release:
-        description: When set, write out/version.txt with this release id and upload out/ as the "site" artifact
-        type: string
-        default: ''
+on: pull_request
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+  ci:
+    permissions:
+      contents: read
+    uses: dm3yb/workflows/.github/workflows/ci-next.yml@v1
+    with:
+      package-manager: pnpm
+      node-version-file: .nvmrc
+      # The same checks as `pnpm check`, split into parallel jobs.
+      lint: pnpm format:check && pnpm lint
       # LayoutProps and the other route types live in .next/types, which a fresh checkout lacks.
-      - run: pnpm exec next typegen
-      # format, lint, typecheck, tests
-      - run: pnpm check
+      typecheck: pnpm exec next typegen && pnpm typecheck
+      test: pnpm test
+      build: pnpm build
       # Public values only, so this also runs for pull requests from forks.
-      - name: Static export
-        env:
-          VERCEL_ENV: production
-          NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL || 'https://dither-studio.aerixity.com' }}
-        run: pnpm build
-      - name: Check the export
-        run: test -f out/index.html && test -f out/404.html
-      - name: Stamp the release
-        if: inputs.release != ''
-        env:
-          RELEASE: ${{ inputs.release }}
-        run: printf '%s\n' "$RELEASE" > out/version.txt
-      - uses: actions/upload-artifact@v7
-        if: inputs.release != ''
-        with:
-          name: site
-          path: out/
-          include-hidden-files: true
-          retention-days: 7
+      build-env: |
+        {
+          "VERCEL_ENV": "production",
+          "NEXT_PUBLIC_SITE_URL": "${{ vars.NEXT_PUBLIC_SITE_URL || 'https://dither-studio.aerixity.com' }}"
+        }
+      export-dir: out
