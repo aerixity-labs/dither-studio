@@ -1,136 +1,54 @@
-# Push to main: checks, `next build` (a static export in out/), then rsync the release to the
-# server and have it switch to it. nginx serves /srv/static/dither-studio/current/out.
-# Run it by hand with a sha to roll back to a release the server still has (the newest 5); that
-# skips the checks and the build.
+# Pull requests: checks and the static export. main: the same, then deploy/deploy.sh ships it
+# to the server. Roll back: see deploy/deploy.sh.
 name: deploy
 
 on:
+  pull_request:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      sha:
-        description: Roll back to a release id (<sha>-<run>) or a SHA still on the server. Empty builds and deploys the current commit.
-        required: false
-        default: ''
 
 permissions:
   contents: read
 
 concurrency:
-  group: deploy-dither-studio
-  cancel-in-progress: false
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   deploy:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    env:
-      NAME: dither-studio
-      URL: https://dither-studio.aerixity.com
-      ROLLBACK: ${{ inputs.sha }}
-      # A new build is <sha>-<run_number>; a rollback names a release id or a bare SHA.
-      ID: ${{ inputs.sha || format('{0}-{1}', github.sha, github.run_number) }}
+    timeout-minutes: 30
     steps:
-      # A rollback id goes to the server's forced command, so it must look like one.
-      - name: Check the rollback id
-        if: env.ROLLBACK != ''
-        run: |
-          [[ "$ROLLBACK" =~ ^[0-9a-f]{40}(-[0-9]{1,12})?$ ]] || { echo "::error::not a SHA or release id: $ROLLBACK"; exit 1; }
-
-      # The commit to build.
       - uses: actions/checkout@v7
-        if: env.ROLLBACK == ''
-
-      # pnpm from package.json, Node from .nvmrc with the pnpm cache, then a frozen install.
       - uses: pnpm/action-setup@v6
-        if: env.ROLLBACK == ''
       - uses: actions/setup-node@v7
-        if: env.ROLLBACK == ''
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - name: Install
-        if: env.ROLLBACK == ''
-        run: pnpm install --frozen-lockfile
-
-      # Format and lint.
-      - name: Lint
-        if: env.ROLLBACK == ''
-        run: pnpm format:check && pnpm lint
-
-      # Types. LayoutProps and the other route types live in .next/types, which a fresh checkout lacks.
-      - name: Typecheck
-        if: env.ROLLBACK == ''
-        run: pnpm exec next typegen && pnpm typecheck
-
-      # Unit tests.
-      - name: Test
-        if: env.ROLLBACK == ''
-        run: pnpm test
-
-      # Next.js build cache: per lockfile, refreshed on every commit.
-      - uses: actions/cache@v6
-        if: env.ROLLBACK == ''
-        with:
-          path: .next/cache
-          key: next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
-          restore-keys: next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
-
-      # The static export in out/. Public values only, so this also runs for pull requests from forks.
+      - run: pnpm install --frozen-lockfile
+      # next typegen: LayoutProps and the other route types live in .next/types, which a fresh
+      # checkout lacks.
+      - name: Checks
+        run: |
+          pnpm format:check
+          pnpm lint
+          pnpm exec next typegen
+          pnpm typecheck
+          pnpm test
       - name: Build
-        if: env.ROLLBACK == ''
         env:
+          # Public values only, so this also runs for pull requests from forks.
           VERCEL_ENV: production
           NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL || 'https://dither-studio.aerixity.com' }}
         run: |
           pnpm build
           test -f out/index.html && test -f out/404.html
-
-      # release/ = what the server gets: RELEASE, nginx.conf and out/ (version.txt for the check below).
-      - name: Release folder
-        if: env.ROLLBACK == ''
-        run: |
-          mkdir -p release/out
-          cp -a out/. release/out/
-          printf '%s\n' "$ID" > release/out/version.txt
-          cp deploy/nginx.conf release/nginx.conf
-          printf '%s\n' "$ID" > release/RELEASE
-
-      # SSH key and the pinned host key; `target` is the server.
-      - name: SSH
+      - name: Deploy
+        if: github.event_name != 'pull_request'
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY_V2 }}
           DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
           DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
           DEPLOY_USER: ${{ vars.DEPLOY_USER }}
-        run: |
-          [[ -n "$DEPLOY_SSH_KEY" ]] || { echo "::error::DEPLOY_SSH_KEY_V2 is not set"; exit 1; }
-          install -d -m 700 ~/.ssh
-          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
-          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          printf 'Host target\n  HostName %s\n  User %s\n  IdentityFile ~/.ssh/deploy\n  IdentitiesOnly yes\n  BatchMode yes\n  StrictHostKeyChecking yes\n' \
-            "$DEPLOY_HOST" "$DEPLOY_USER" > ~/.ssh/config
-
-      # Upload into /srv/incoming/dither-studio on the server.
-      - name: Upload
-        if: env.ROLLBACK == ''
-        run: rsync -a --delete --checksum release/ "target:$NAME/"
-
-      # The server makes releases/<id> from the upload (or uses one it still has) and switches to it.
-      - name: Deploy ${{ env.ID }}
-        run: |
-          # shellcheck disable=SC2029  # the arguments go to the forced command on the server
-          ssh target release "$NAME" "$ID" </dev/null
-
-      # Through Cloudflare: /version.txt must report the release, and / must answer.
-      - name: Check
-        run: |
-          live=$(curl -fsS --max-time 10 "$URL/version.txt?r=$GITHUB_RUN_ID")
-          # A rollback to a bare SHA lands on that commit's newest build, <sha>-<run>.
-          if [[ "$live" != "$ID" && ! (-n "$ROLLBACK" && "$live" == "$ID"-*) ]]; then
-            echo "::error::live release is $live, expected $ID"
-            exit 1
-          fi
-          curl -fsS --max-time 10 -o /dev/null -w "GET / -> %{http_code}\n" "$URL/"
-          echo "live: $live"
+        run: deploy/deploy.sh
