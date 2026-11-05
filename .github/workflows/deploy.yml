@@ -69,6 +69,14 @@ jobs:
         if: env.ROLLBACK == ''
         run: pnpm test
 
+      # Next.js build cache: per lockfile, refreshed on every commit.
+      - uses: actions/cache@v6
+        if: env.ROLLBACK == ''
+        with:
+          path: .next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+
       # The static export in out/. Public values only, so this also runs for pull requests from forks.
       - name: Build
         if: env.ROLLBACK == ''
