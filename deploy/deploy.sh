@@ -45,11 +45,12 @@ echo "==> Deploy $ID"
 # shellcheck disable=SC2029
 ssh target release "$NAME" "$ID" </dev/null
 
-# 5. Through Cloudflare: /version.txt reports this release, and the home page answers.
+# 5. Through Cloudflare: /version.txt reports this release, and the home page answers. curl
+#    retries network errors by itself.
 echo "==> Check $URL"
-live=$(curl -fsS -m 10 "$URL/version.txt?r=$GITHUB_RUN_ID")
+live=$(curl -fsS --retry 5 --retry-delay 3 --retry-all-errors -m 10 "$URL/version.txt?r=$GITHUB_RUN_ID")
 if [[ $live != "$ID" ]]; then
   echo "ERROR: $URL/version.txt is $live, expected $ID" >&2
   exit 1
 fi
-curl -fsS -m 10 -o /dev/null -w "GET / -> %{http_code}\n" "$URL/"
+curl -fsS --retry 5 --retry-delay 3 --retry-all-errors -m 10 -o /dev/null -w "GET / -> %{http_code}\n" "$URL/"
