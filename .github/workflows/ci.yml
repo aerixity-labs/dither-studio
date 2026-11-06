@@ -1,6 +1,7 @@
-# Pull requests: checks and the static export. main: the same, then deploy/deploy.sh ships it
-# to the server. Roll back: see deploy/deploy.sh.
-name: deploy
+# Checks and the static export, for pull requests and main. Deploys are not here: on a push to
+# main, the aerixity-cloud panel builds the commit on the server and puts it live (build env: the
+# panel's Environment tab). Roll back in the panel: Releases, Make live.
+name: ci
 
 on:
   pull_request:
@@ -12,11 +13,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  deploy:
+  check:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -44,11 +45,3 @@ jobs:
         run: |
           pnpm build
           test -f out/index.html && test -f out/404.html
-      - name: Deploy
-        if: github.ref == 'refs/heads/main' # main only: pushes and runs by hand
-        env:
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY_V2 }}
-          DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
-          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
-        run: deploy/deploy.sh
